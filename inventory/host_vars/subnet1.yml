@@ -1,0 +1,4 @@
+---
+ansible_host: '127.0.0.1'
+subnet_name: 'GitLab'
+subnet_address_prefix_cidr: '172.20.1.0/24'

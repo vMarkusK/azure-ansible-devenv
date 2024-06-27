@@ -1,0 +1,43 @@
+---
+- name: Create RG and VNet
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    rg_name: 'rg-devenv'
+    location: 'swedencentral'
+    vnet_name: 'vnet-devenv'
+    vnet_address_prefixes_cidr: '172.20.0.0/16'
+
+  tasks:
+    - name: Create RG
+      azure.azcollection.azure_rm_resourcegroup:
+        name: '{{ rg_name }}'
+        location: '{{ location }}'
+        state: present
+
+    - name: Create VNet
+      azure.azcollection.azure_rm_virtualnetwork:
+        name: '{{ vnet_name }}'
+        resource_group: '{{ rg_name }}'
+        address_prefixes_cidr: '{{ vnet_address_prefixes_cidr }}'
+        state: present
+
+- name: Create Subnets
+  hosts: vnet-dev
+  connection: local
+  gather_facts: false
+
+  vars:
+    rg_name: 'rg-devenv'
+    vnet_name: 'vnet-devenv'
+
+  tasks:
+    - name: Create Subnets
+      azure.azcollection.azure_rm_subnet:
+        name: '{{ hostvars[inventory_hostname].subnet_name }}'
+        address_prefix_cidr: '{{ hostvars[inventory_hostname].subnet_address_prefix_cidr }}'
+        resource_group: '{{ rg_name }}'
+        virtual_network_name: '{{ vnet_name }}'
+        state: present
