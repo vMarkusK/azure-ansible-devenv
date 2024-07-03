@@ -17,14 +17,22 @@
         location: '{{ location }}'
         state: present
 
+    - name: Pause for 30 seconds to get RG Ready
+      ansible.builtin.pause:
+        seconds: 30 
+
     - name: Create VNet
       azure.azcollection.azure_rm_virtualnetwork:
         name: '{{ vnet_name }}'
         resource_group: '{{ rg_name }}'
         address_prefixes_cidr: '{{ vnet_address_prefixes_cidr }}'
         state: present
+    
+    - name: Pause for 30 seconds to get VNet Ready
+      ansible.builtin.pause:
+        seconds: 30 
 
-- name: Create Subnets
+- name: Create Subnets ans VMs
   hosts: vnet-dev
   connection: local
   gather_facts: false
@@ -32,6 +40,7 @@
   vars:
     rg_name: 'rg-devenv'
     vnet_name: 'vnet-devenv'
+    username: 'azureuser'
 
   tasks:
     - name: Create Subnets
@@ -41,3 +50,24 @@
         resource_group: '{{ rg_name }}'
         virtual_network_name: '{{ vnet_name }}'
         state: present
+
+    - name: Create VMs
+      azure.azcollection.azure_rm_virtualmachine:
+        resource_group: '{{ rg_name }}'
+        name: 'vm-{{ hostvars[inventory_hostname].subnet_name }}'
+        vm_size: Standard_B1s
+        managed_disk_type: Standard_LRS
+        admin_username: "{{ username }}"
+        ssh_password_enabled: false
+        ssh_public_keys:
+          - path: '/home/{{ username }}/.ssh/authorized_keys'
+            key_data: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+        virtual_network_name: '{{ vnet_name }}'
+        subnet_name: '{{ hostvars[inventory_hostname].subnet_name }}'
+        boot_diagnostics:
+          enabled: true
+        image:
+          offer: 0001-com-ubuntu-server-jammy
+          publisher: canonical
+          sku: 22_04-lts-gen2
+          version: latest
