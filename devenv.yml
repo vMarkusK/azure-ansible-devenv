@@ -16,10 +16,12 @@
         name: '{{ rg_name }}'
         location: '{{ location }}'
         state: present
+      register: rg
 
-    - name: Pause for 30 seconds to get RG Ready
+    - name: Pause for a few seconds to get RG Ready
       ansible.builtin.pause:
-        seconds: 30 
+        seconds: 10
+      when: rg.changed
 
     - name: Create VNet
       azure.azcollection.azure_rm_virtualnetwork:
@@ -27,12 +29,25 @@
         resource_group: '{{ rg_name }}'
         address_prefixes_cidr: '{{ vnet_address_prefixes_cidr }}'
         state: present
-    
-    - name: Pause for 30 seconds to get VNet Ready
-      ansible.builtin.pause:
-        seconds: 30 
+      register: vnet
 
-- name: Create Subnets ans VMs
+    - name: Pause for a few seconds to get VNet Ready
+      ansible.builtin.pause:
+        seconds: 10
+      when: vnet.changed
+
+    - name: Create Subnets
+      azure.azcollection.azure_rm_subnet:
+        name: '{{ hostvars[item].subnet_name }}'
+        address_prefix_cidr: '{{ hostvars[item].subnet_address_prefix_cidr }}'
+        resource_group: '{{ rg_name }}'
+        virtual_network_name: '{{ vnet_name }}'
+        state: present
+      register: subnet
+      with_items:
+        - "{{ groups['vnet-dev'] }}"
+
+- name: Create VMs
   hosts: vnet-dev
   connection: local
   gather_facts: false
@@ -43,27 +58,20 @@
     username: 'azureuser'
 
   tasks:
-    - name: Create Subnets
-      azure.azcollection.azure_rm_subnet:
-        name: '{{ hostvars[inventory_hostname].subnet_name }}'
-        address_prefix_cidr: '{{ hostvars[inventory_hostname].subnet_address_prefix_cidr }}'
-        resource_group: '{{ rg_name }}'
-        virtual_network_name: '{{ vnet_name }}'
-        state: present
 
     - name: Create VMs
       azure.azcollection.azure_rm_virtualmachine:
-        resource_group: '{{ rg_name }}'
-        name: 'vm-{{ hostvars[inventory_hostname].subnet_name }}'
+        resource_group: "{{ rg_name }}"
+        name: "vm-{{ hostvars[inventory_hostname].subnet_name }}"
         vm_size: Standard_B1s
         managed_disk_type: Standard_LRS
         admin_username: "{{ username }}"
         ssh_password_enabled: false
         ssh_public_keys:
           - path: '/home/{{ username }}/.ssh/authorized_keys'
-            key_data: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+            key_data: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_rsa.pub') }}"
         virtual_network_name: '{{ vnet_name }}'
-        subnet_name: '{{ hostvars[inventory_hostname].subnet_name }}'
+        subnet_name: "{{ hostvars[inventory_hostname].subnet_name }}"
         boot_diagnostics:
           enabled: true
         image:
@@ -71,3 +79,21 @@
           publisher: canonical
           sku: 22_04-lts-gen2
           version: latest
+      register: vm
+
+    - name: Get my public IP
+      community.general.ipify_facts:
+      register: ip
+
+    - name: Update rules on existing security group
+      azure.azcollection.azure_rm_securitygroup:
+        resource_group: '{{ rg_name }}'
+        name: 'vm-{{ hostvars[inventory_hostname].subnet_name }}01'
+        rules:
+          - name: SSH
+            protocol: Tcp
+            source_address_prefix: '{{ ip.ansible_facts.ipify_public_ip }}'
+            destination_port_range: 22
+            access: Allow
+            priority: 100
+            direction: Inbound
