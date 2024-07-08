@@ -21,7 +21,7 @@
     - name: Pause for a few seconds to get RG Ready
       ansible.builtin.pause:
         seconds: 10
-      when: rg.changed
+      when: rg.changed # noqa: no-handler
 
     - name: Create VNet
       azure.azcollection.azure_rm_virtualnetwork:
@@ -34,7 +34,7 @@
     - name: Pause for a few seconds to get VNet Ready
       ansible.builtin.pause:
         seconds: 10
-      when: vnet.changed
+      when: vnet.changed # noqa: no-handler
 
     - name: Create Subnets
       azure.azcollection.azure_rm_subnet:
